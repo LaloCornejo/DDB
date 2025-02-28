@@ -1,0 +1,245 @@
+\documentclass{article}
+\usepackage{graphicx} % Required for inserting images
+\usepackage{listings}
+\lstdefinestyle{sqlstyle}{
+    language=SQL,
+    basicstyle=\ttfamily\small,
+    keywordstyle=\color{blue},
+    identifierstyle=\color{red},
+    commentstyle=\color{green},
+    stringstyle=\color{purple},
+    breaklines=true,
+    breakatwhitespace=true,
+    tabsize=2
+}
+
+\title{Practica 0}
+\author{JESUS EDUARDO CORNEJO CLAVEL}
+\date{February 2025}
+
+\begin{document}
+
+\maketitle
+
+\subsection{Procedimientos Almacenados (Procedure)}
+
+\textnormal{Los procedimientos almacenados en MySQL son bloques de código que contienen una o más instrucciones SQL. Estos procedimientos pueden ser llamados repetidamente desde diferentes partes del programa, lo que facilita la reutilización de código y la implementación de lógica compleja. Para crear un procedimiento almacenado en MySQL, se utiliza la sentencia CREATE PROCEDURE, seguida del nombre del procedimiento y una lista de parámetros si es necesario. El código del procedimiento se encierra entre las palabras clave BEGIN y END.}
+
+\begin{lstlisting}[style=sqlstyle]
+
+DELIMITER // 
+CREATE PROCEDURE reporteEficiencia(IN tipoVehiculo VARCHAR(50))
+BEGIN
+    SELECT 
+        v.tipo AS tipoVehiculo, 
+        v.marca, 
+        v.modelo, 
+        AVG(tc.cantidad / r.distancia) AS kmPorLitro
+    FROM 
+        Vehiculo v 
+    INNER JOIN 
+        TransaccionCombustible tc ON v.vehiculoId = tc.vehiculoId
+    INNER JOIN 
+        Ruta r ON v.vehiculoId = r.vehiculoId
+    WHERE 
+        v.tipo = tipoVehiculo
+    GROUP BY 
+        v.tipo, 
+        v.marca, 
+        v.modelo
+    ORDER BY 
+        kmPorLitro DESC;
+END // 
+DELIMITER ;
+
+
+\end{lstlisting}
+
+\begin{lstlisting}[style=sqlstyle]
+    DELIMITER //
+CREATE PROCEDURE historialMantenimiento(IN vehiculoId INT)
+BEGIN
+    SELECT 
+        m.fechaServicio,
+        m.tipoServicio,
+        m.descripcion,
+        m.costo,
+        v.marca,
+        v.modelo
+    FROM Mantenimiento m
+    JOIN Vehiculo v ON m.vehiculoId = v.vehiculoId
+    WHERE m.vehiculoId = vehiculoId
+    ORDER BY m.fechaServicio DESC;
+END //
+DELIMITER ;
+
+\end{lstlisting}
+
+\subsection{Funciones (Function)}
+
+\textnormal{Las funciones en MySQL son similares a los procedimientos, pero siempre devuelven un valor. Son útiles para realizar cálculos o obtener datos específicos. Las funciones se crean con la sentencia CREATE FUNCTION y deben incluir un tipo de retorno explícito. A diferencia de los procedimientos, las funciones se pueden usar directamente en expresiones SQL.}
+
+\begin{lstlisting}[style=sqlstyle]
+    DELIMITER //
+CREATE FUNCTION CalcularEdadVehiculo(anio_vehiculo INT) 
+RETURNS INT
+DETERMINISTIC
+BEGIN
+    RETURN YEAR(CURRENT_DATE()) - anio_vehiculo;
+END //
+DELIMITER ;
+
+-- Uso de la función
+SELECT vehiculoId, marca, modelo, anio, 
+       CalcularEdadVehiculo(anio) AS EdadVehiculo 
+FROM Vehiculo;
+\end{lstlisting}
+
+\begin{lstlisting}[style=sqlstyle]
+    DELIMITER //
+CREATE FUNCTION DocumentoPorVencer(fecha_vencimiento DATE) 
+RETURNS VARCHAR(10)
+DETERMINISTIC
+BEGIN
+    IF fecha_vencimiento BETWEEN CURRENT_DATE() AND DATE_ADD(CURRENT_DATE(), INTERVAL 30 DAY) THEN
+        RETURN 'Sí';
+    ELSE
+        RETURN 'No';
+    END IF;
+END //
+DELIMITER ;
+
+-- Uso de la función
+SELECT documentoId, tipo, fechaVencimiento, 
+       DocumentoPorVencer(fechaVencimiento) AS PorVencer 
+FROM Documento;
+\end{lstlisting}
+
+\subsection{Estructuras de Control Condicionales y Repetitivas}
+
+\textnormal{Las estructuras de control condicionales, como IF y CASE, permiten tomar decisiones basadas en condiciones específicas. Las estructuras repetitivas, como LOOP, WHILE LOOP, y REPEAT, permiten ejecutar bloques de código repetidamente hasta que se cumpla una condición. Estas estructuras son fundamentales en MySQL para controlar el flujo del programa.}
+
+\begin{lstlisting}[style=sqlstyle]
+    DELIMITER //
+CREATE PROCEDURE ClasificarVehiculosPorEdad()
+BEGIN
+    DECLARE done INT DEFAULT FALSE;
+    DECLARE v_id INT;
+    DECLARE v_anio INT;
+    DECLARE cur CURSOR FOR SELECT vehiculoId, anio FROM Vehiculo;
+    DECLARE CONTINUE HANDLER FOR NOT FOUND SET done = TRUE;
+    
+    OPEN cur;
+    
+    read_loop: LOOP
+        FETCH cur INTO v_id, v_anio;
+        IF done THEN
+            LEAVE read_loop;
+        END IF;
+        
+        IF (YEAR(CURRENT_DATE()) - v_anio) > 10 THEN
+            SELECT CONCAT('Vehículo ', v_id, ': Antiguo') AS Clasificación;
+        ELSE
+            SELECT CONCAT('Vehículo ', v_id, ': Reciente') AS Clasificación;
+        END IF;
+    END LOOP;
+    
+    CLOSE cur;
+END //
+DELIMITER ;
+
+-- Llamada al procedimiento
+CALL ClasificarVehiculosPorEdad();
+\end{lstlisting}
+
+\begin{lstlisting}[style=sqlstyle]
+    DELIMITER //
+CREATE PROCEDURE ClasificarCostoMantenimiento()
+BEGIN
+    DECLARE v_id INT;
+    DECLARE v_costo DECIMAL(10,2);
+    DECLARE done INT DEFAULT FALSE;
+    DECLARE cur CURSOR FOR SELECT mantenimientoId, costo FROM Mantenimiento;
+    DECLARE CONTINUE HANDLER FOR NOT FOUND SET done = TRUE;
+    
+    OPEN cur;
+    
+    read_loop: LOOP
+        FETCH cur INTO v_id, v_costo;
+        IF done THEN
+            LEAVE read_loop;
+        END IF;
+        
+        CASE
+            WHEN v_costo < 1000 THEN
+                SELECT v_id, 'Costo Bajo' AS Categoria;
+            WHEN v_costo BETWEEN 1000 AND 5000 THEN
+                SELECT v_id, 'Costo Medio' AS Categoria;
+            ELSE
+                SELECT v_id, 'Costo Alto' AS Categoria;
+        END CASE;
+    END LOOP;
+    
+    CLOSE cur;
+END //
+DELIMITER ;
+
+-- Llamada al procedimiento
+CALL ClasificarCostoMantenimiento();
+\end{lstlisting}
+
+\subsection{Disparadores (Triggers)}
+
+\textnormal{Los disparadores en MySQL son procedimientos que se ejecutan automáticamente antes o después de eventos específicos en la base de datos, como inserciones, actualizaciones o eliminaciones. Son útiles para mantener la integridad de los datos y automatizar tareas administrativas. Aunque no se mencionan explícitamente en los resultados, los disparadores son una parte importante de MySQL y se crean con la sentencia CREATE TRIGGER.}
+
+\begin{lstlisting}[style=sqlstyle]
+    DELIMITER //
+CREATE TRIGGER ActualizarEstadoVehiculo 
+AFTER INSERT ON Mantenimiento
+FOR EACH ROW
+BEGIN
+    IF NEW.tipoServicio = 'Reparación Mayor' THEN
+        UPDATE Vehiculo 
+        SET estado = 'En Reparación' 
+        WHERE vehiculoId = NEW.vehiculoId;
+    END IF;
+END //
+DELIMITER ;
+\end{lstlisting}
+
+\begin{lstlisting}[style=sqlstyle]
+    DELIMITER //
+CREATE TABLE IF NOT EXISTS LogConductores (
+    logId INT PRIMARY KEY AUTO_INCREMENT,
+    conductorId INT,
+    accion VARCHAR(50),
+    fechaAccion DATETIME
+);
+
+CREATE TRIGGER RegistrarCambioConductor
+AFTER UPDATE ON Conductor
+FOR EACH ROW
+BEGIN
+    INSERT INTO LogConductores(conductorId, accion, fechaAccion)
+    VALUES (NEW.conductorId, 'Actualización', NOW());
+END //
+DELIMITER ;
+\end{lstlisting}
+
+\newpage
+
+\section{Bibliografía}
+
+\begin{thebibliography}{9}
+
+\bibitem{Upadhyay2021} Upadhyay, N. (2021, January 8). Learn MySQL: The Basics of MySQL Stored Procedures. SQL Shack - Articles about Database Auditing, Server Performance, Data Recovery, and More. Disponible en: \url{https://www.sqlshack.com/learn-mysql-the-basics-of-mysql-stored-procedures/}
+
+\bibitem{DigitalOcean} How To Use Stored Procedures in MySQL | DigitalOcean. (n.d.). Disponible en: \url{https://www.digitalocean.com/community/tutorials/how-to-use-stored-procedures-in-mysql}
+
+\bibitem{MySQLStoredProcedures} MySQL :: MySQL 8.4 Reference Manual :: 27.2.4 Stored Procedures, Functions, Triggers, and LAST_INSERT_ID(). (2025). Disponible en: \url{https://dev.mysql.com/doc/refman/8.4/en/stored-routines-last-insert-id.html}
+
+\bibitem{MySQLFunctions} MySQL :: MySQL 8.4 Reference Manual :: 14 Functions and Operators. (2025). Disponible en: \url{https://dev.mysql.com/doc/en/functions.html}
+
+\end{thebibliography}
+
+\end{document}
